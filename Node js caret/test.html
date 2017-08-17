@@ -1,0 +1,240 @@
+﻿<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta charset="utf-8" />
+    <title>Test Page</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/CDN/caret.js"></script>
+
+</head>
+<body>
+
+    <div id="containerDiv" style="width: 800px; height: 800px; position: absolute; top: 10px;">
+
+        <div id="mainDiv" style="width: 790px; height:330px;">
+
+            <div id="editorDiv" style="float: left; padding: 10px;">
+                <textarea id="editarea" style="width: 400px; height: 300px;"></textarea>
+            </div>
+
+            <div style="float: left; padding: 10px;">
+                <div id="labelDiv" style="float: left;">
+                    <label for="beview">begin</label>
+                    <br />
+                    <label for="enview">end</label>
+                </div>
+                <div id="caretDiv" style="float: left;">
+                    :<input type="text" id="beview" value="" disabled="true" style="width: 25px;" />
+                    <br />
+                    :<input type="text" id="enview" value="" disabled="true" style="width: 25px;" />
+                </div>
+                <div style="float: left; padding-left: 15px;">
+                    <textarea id="operationview" value="" disabled="true" ></textarea>
+                </div>
+            </div>
+        </div>
+
+        <div id="logDiv" style="width: 100%; height:240px; overflow: auto">
+
+        </div>
+
+        <div id="resultDiv" style="width: 790px; padding: 10px;">
+
+        </div>
+
+    </div>
+
+    <script>
+        var KeyBoard = {
+            last: -1,
+            pre: 0,
+            num: 0
+        };
+
+        var CMD = {
+            cur: -1,
+            type: '',
+            val: ''
+        }
+
+        var socket = io();
+
+        socket.emit('join', {
+            name: rndword(5)
+        });
+
+        socket.on('join', function (data) {
+            $('#resultDiv').append('<div>'+data.time + '  :  ' + data.name + ' join.</div>');
+        });
+
+        socket.on('update', function (data) {
+            var cursor = $('#editarea').caret().end;
+            var str = $('#editarea').val();
+            var res = str;
+            if (data.type == 'insert') {
+                var substr1 = str.substr(0, data.cur);
+                var substr2 = str.substr(data.cur);
+                res = substr1 + data.val +substr2;
+                $('#editarea').val(res);
+            } else if (data.type == 'backspace') {
+                var substr1 = str.substr(0, data.cur+data.val);
+                var substr2 = str.substr(data.cur);
+                res = substr1 + substr2;
+                $('#editarea').val(res);
+            } else if (data.type == 'delete') {
+                var substr1 = str.substr(0, data.cur);
+                var substr2 = str.substr(data.cur+data.val);
+                res = substr1 + substr2;
+                $('#editarea').val(res);
+            }
+            $('#editarea').caret(cursor);
+        });
+
+
+        /*
+            영문 입력시 keydown과 keyup에서 keyCode값이 동일한 값을 가지고
+
+            한글 입력시 keydown에서 keyCode 값이229의 값이 나오고,
+            keyup에서 keyCode값이 정상 출력.
+
+            영어기준 keydown 시 입력 전의 커서위치,
+            keyup 시 입력 후의 커서 위치.
+        */
+
+        // 아이디가 editarea인 Obj의 keydown이벤트 시에
+        // enview Obj에 커서 범위 중 맨 왼쪽 값을 출력
+        $('#editarea').on('keydown', function (evt) {
+            $('#beview').val($(this).caret().begin);
+
+            // 이벤트의 값을 출력
+            $('#logDiv').append('<div>type : ' + evt['type'] + '</div>');
+            $('#logDiv').append('<div>target : ' + evt['target'] + '</div>');
+            $('#logDiv').append('<div>altKey : ' + evt['altKey'] + '</div>');
+            $('#logDiv').append('<div>ctrlKey : ' + evt['ctrlKey'] + '</div>');
+            $('#logDiv').append('<div>metaKey : ' + evt['metaKey'] + '</div>');
+            $('#logDiv').append('<div>shiftKey : ' + evt['shiftKey'] + '</div>');
+            $('#logDiv').append('<div>char : ' + evt['char'] + '</div>');
+            $('#logDiv').append('<div>key : ' + evt['key'] + '</div>');
+            $('#logDiv').append('<div>keyCode : ' + evt['keyCode'] + '</div>');
+            $('#logDiv').append('<br/>');
+
+
+            //$('#logDiv').append('<div>O.T.test : ' + KeyBoard.last + '  ' + evt.keyCode + '  ' + KeyBoard.num + '</div>');
+            //$('#logDiv').append('<br/>');
+
+            if (KeyBoard.last >= 0          // 마지막 입력이 있고
+                && KeyBoard.last != evt.keyCode) {  // 다른 키가 눌려졌을 때
+
+                if (KeyBoard[KeyBoard.last] == 1) { // 마지막 입력 전송 전
+                    KeyBoard[KeyBoard.last] = 2;    // 전송 표시
+                    // last 키 보내기
+                    CMD.type = classifier(KeyBoard.last);
+                    var str = $(this).val();
+                    CMD.val = str.substr(KeyBoard.pre, $(this).caret().end);
+                    CMD.cur = KeyBoard.pre;
+
+                    //$('#logDiv').append('<div>O.T. : ' + CMD.cur + '   ' + CMD.type + '  "' + CMD.val + '"</div>');
+                    //$('#logDiv').append('<br/>');
+                }
+                KeyBoard.pre = $(this).caret().begin;   // 입력 위치 저장
+                KeyBoard.last = evt.keyCode;    // last 값 갱신
+            }
+            if (!KeyBoard[evt.keyCode]          // 눌려진적 없는 키
+                || KeyBoard[evt.keyCode] == 0) { // 안눌려져있다면
+                KeyBoard.num = KeyBoard.num + 1;              // 눌려진 개수 +1
+                KeyBoard.pre = $(this).caret().begin;   // 입력 위치 저장
+                KeyBoard.last = evt.keyCode;    // last 값 갱신
+            }
+            KeyBoard[evt.keyCode] = 1;      // 눌려짐을 표시
+            
+            $('#logDiv').scrollTop($('#logDiv')[0].scrollHeight);
+        });
+        
+        // 아이디가 editarea인 Obj의 keyup이벤트 시에
+        // enview Obj에 커서 범위 중 맨 오른쪽 값을 출력
+        $('#editarea').on('keyup', function (evt) {
+            $('#enview').val($(this).caret().end);
+
+            // 이벤트의 값을 출력
+            $('#logDiv').append('<div>type : ' + evt['type'] + '</div>');
+            $('#logDiv').append('<div>target : ' + evt['target'] + '</div>');
+            $('#logDiv').append('<div>altKey : ' + evt['altKey'] + '</div>');
+            $('#logDiv').append('<div>ctrlKey : ' + evt['ctrlKey'] + '</div>');
+            $('#logDiv').append('<div>metaKey : ' + evt['metaKey'] + '</div>');
+            $('#logDiv').append('<div>shiftKey : ' + evt['shiftKey'] + '</div>');
+            $('#logDiv').append('<div>char : ' + evt['char'] + '</div>');
+            $('#logDiv').append('<div>key : ' + evt['key'] + '</div>');
+            $('#logDiv').append('<div>keyCode : ' + evt['keyCode'] + '</div>');
+            $('#logDiv').append('<br/>');
+            
+            KeyBoard.num = KeyBoard.num - 1;
+            if (KeyBoard.num <= 0) {    // 눌려진 키가 없을 때
+                KeyBoard.last = -1;     // last key 초기화
+            }
+            if (KeyBoard[evt.keyCode] == 1) {   // 보내기 전 상태
+                // 보내기
+                var str = $(this).val();
+                CMD.cur = KeyBoard.pre;
+                CMD.type = classifier(evt.keyCode);
+                if (CMD.type == 'insert')
+                    CMD.val = str.substr(KeyBoard.pre, 1);
+                else if (CMD.type == 'delete')
+                    CMD.val = 1
+                else if (CMD.type == 'backspace')
+                    CMD.val = $(this).caret().end - KeyBoard.pre;
+
+                // 소켓에 보냄
+                socket.emit('update', CMD);
+
+                $('#operationview').val('O.T. : ' + CMD.cur + '   ' + CMD.type + '  "' + CMD.val + '" ');
+            } else if (KeyBoard[evt.keyCode] == 2) { // 이미 보낸 상태
+
+            }
+            KeyBoard[evt.keyCode] = 0;          // 초기화
+            
+            $('#logDiv').scrollTop($('#logDiv')[0].scrollHeight);
+
+        });
+
+        // 랜덤 문자열 만들기
+        function rndword(len) {
+            var name = "";
+            var possible = 'abcdefghijklmnopqrstuvwxyz';
+            for (var i = 0; i < len; i++) {
+                name += possible.charAt(Math.floor(Math.random() * possible.length));
+            }
+            return name;
+        }
+
+        function classifier(keyCode) {
+            var res = '';
+            if (48 <= keyCode 
+                && keyCode <= 57) {     // 상단 번호
+                res = 'insert';
+            } else if (65 <= keyCode 
+                && keyCode <= 90) {     // 문자
+                res = 'insert';
+            } else if (96 <= keyCode 
+                && keyCode <= 111) {    // numpad
+                res = 'insert';
+            } else if (8 == keyCode) {  // bs
+                res = 'backspace';
+            } else if (46 == keyCode) { // del
+                res = 'delete'
+            } else if (9 == keyCode     // tab
+                || 13 == keyCode        // space
+                || 32 == keyCode) {     // enter
+                res = 'insert';
+            } else if (45 == keyCode) { // ins
+
+            } else if (187 <= keyCode) {    // 기타 입력키 ( = , . - / )
+                res = 'insert';
+            }
+            return res;
+        }
+    </script>
+
+</body>
+</html>
